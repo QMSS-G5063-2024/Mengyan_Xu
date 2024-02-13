@@ -1,0 +1,300 @@
+---
+title: "dating_graded"
+author: "Mengyan Xu"
+date: "2024-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+# List of packages that will be used in my homework
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(DT)
+library(lubridate)
+```
+Question 1
+```{r}
+# Simplify meeting_type categories and convert year to integer
+HCMST_couples <- HCMST_couples %>%
+  mutate(
+    simplified_meeting_type = case_when(
+      meeting_type %in% c('Primary or Secondary School', 'College') ~ 'school',
+      meeting_type %in% c('Public Place', 'Work Neighbors') ~ 'neighbors',
+      meeting_type %in% c('Volunteer Organization', 'Customer-Client Relationship', 'Business Trip') ~ 'work',
+      meeting_type %in% c('Bar or Restaurant', 'Private Party', 'On Vacation', 'One-time Service Interaction') ~ 'offwork',
+      meeting_type %in% c('Internet', 'Internet Dating or Phone App', 'Internet Social Network', 'Online Gaming', 'Internet Chat', 'Met Online') ~ 'online',
+      TRUE ~ 'other'
+    ),
+    Q21A_Year = as.integer(as.character(Q21A_Year))
+  )
+
+# Summarize data
+meeting_counts <- HCMST_couples %>%
+  group_by(Q21A_Year, simplified_meeting_type) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# Chart 1: Line chart showing the trends over time for each meeting type
+ggplot(meeting_counts, aes(x = Q21A_Year, y = count, color = simplified_meeting_type)) +
+  geom_line() +
+  labs(title = "Trends of Meeting Types Over Time",
+       x = "Year",
+       y = "Count",
+       color = "Meeting Type") +
+  theme_minimal()
+
+# Chart 2: Stacked area chart for the proportion of each meeting type per year
+ggplot(meeting_counts, aes(x = Q21A_Year, y = count, fill = simplified_meeting_type)) +
+  geom_area(position = 'fill') +
+  labs(title = "Proportional Changes in Meeting Types Over Time",
+       x = "Year",
+       y = "Proportion",
+       fill = "Meeting Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("school" = "blue", "neighbors" = "green", "work" = "red", "offwork" = "yellow", "online" = "purple", "other" = "grey"))
+```
+For the feature article about how couples meet and stay together, I recommend including both the line chart and the stacked area chart, each serving a distinct purpose and providing unique insights:
+
+Recommended Visualization
+Line Chart: This chart is excellent for illustrating the trends of each meeting type over time. It clearly shows how the frequency of each meeting type changes year by year, making it easier to spot trends such as increases, decreases, or stability over time. It's particularly effective for highlighting significant shifts or the emergence of new trends, such as the rise of online meetings.
+
+Stacked Area Chart: This chart is recommended for showing the proportional changes in how couples meet over time. It offers a clear visualization of the relative significance of each meeting type within a given year and how this balance shifts over time. This chart is particularly useful for understanding the changing landscape of dating, emphasizing how certain meeting types grow or shrink in proportion relative to others.
+
+Three Specific Design Choices
+Color Coding: Consistent and distinct color coding for each meeting type across both charts aids in recognition and comparison. This choice is rooted in the principle of consistency, which helps the reader easily track each category across different visualizations without having to reorient themselves with new color schemes.
+
+Data Simplification: Simplifying the meeting types into broader categories addresses the principle of reducing cognitive load. By grouping similar meeting types, the charts avoid overwhelming the reader with too many lines or areas, making the data easier to digest and the key trends more apparent.
+
+Choice of Chart Types: The decision to use a line chart for trend analysis and a stacked area chart for proportional analysis is based on the principle of choosing the right type of chart for the data story you want to tell. The line chart is ideal for showing changes over time, while the stacked area chart effectively illustrates part-to-whole relationships and how they evolve.
+
+Question 2
+```{r}
+library(ggplot2)
+ggplot(HCMST_couples, aes(x = ppage, y = Q9, color = ppgender)) +
+  geom_point(alpha = 0.5) +  # Use alpha to make points semi-transparent
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +  # Line of equality
+  scale_color_manual(values = c("Male" = "blue", "Female" = "pink")) +  # Customize colors
+  labs(title = "Relationship Between Respondent's and Partner's Age by gender",
+       x = "Respondent's Age",
+       y = "Partner's Age",
+       color = "Gender of Respondent") +
+  theme_minimal() +
+  geom_text(aes(label = "Main Pattern"), x = 50, y = 20, check_overlap = TRUE, color = "black")  # 
+```
+This visualization will allow us to observe patterns, as there is positive correction between the respondent age and their partner's age for both male and female. 
+
+Question 3
+
+```{r}
+# 'Q32_2' represents whether respondents used an internet service to meet their partner
+internet_meeting_by_politics <- HCMST_couples %>%
+  filter(!is.na(Q32_2)) %>%
+  mutate(Internet_Meeting = ifelse(Q32_2 == 1, "No", "Yes"),
+         Respondent_Politics = partyid7) %>%
+  group_by(Respondent_Politics, Internet_Meeting) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  mutate(Proportion = Count / sum(Count))
+
+# Plot
+ggplot(internet_meeting_by_politics, aes(x = Respondent_Politics, y = Proportion, fill = Internet_Meeting)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Use of Internet Services for Meeting Partner by Political Affiliation",
+       x = "Respondent's Political Affiliation",
+       y = "Proportion",
+       fill = "Met Via Internet") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 'duration' represents the length of the relationship in days
+relationship_duration_by_politics <- HCMST_couples %>%
+  filter(!is.na(duration)) %>%
+  mutate(Respondent_Politics = partyid7) %>%
+  group_by(Respondent_Politics) %>%
+  summarise(Average_Duration = mean(duration, na.rm = TRUE), .groups = 'drop') %>%
+  arrange(desc(Average_Duration))
+
+# Plot
+ggplot(relationship_duration_by_politics, aes(x = reorder(Respondent_Politics, Average_Duration), y = Average_Duration)) +
+  geom_col(fill = "cadetblue") +
+  labs(title = "Average Relationship Duration by Respondent's Political Affiliation",
+       x = "Respondent's Political Affiliation",
+       y = "Average Duration (days)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+I prefer Chart 2, which examines the average relationship duration by political affiliation, there are several compelling reasons to consider this visualization for recommendation:
+
+Insight into Relationship Dynamics: This chart offers a unique perspective on how political affiliations might influence relationship longevity. It can provide readers with insights into whether shared political beliefs correlate with more enduring relationships, an aspect that can spark engaging discussions on the role of shared values in romantic partnerships.
+
+Depth of Analysis: By focusing on the average duration of relationships within different political affiliations, this chart allows for a deeper exploration of relationship quality and stability. It moves beyond the initial meeting point to consider the sustainability of relationships, which can offer more nuanced insights into the interplay between politics and personal life.
+
+Emotional Engagement: The topic of relationship duration can resonate more emotionally with readers, as it touches on the aspects of commitment, compatibility, and the challenges of maintaining long-term relationships. This can make the article more relatable and engaging.
+
+Question 4 
+I'll explore the relationship between education level and relationship satisfaction by this chart.
+```{r}
+# Define education level categories
+HCMST_couples$simplified_education <- case_when(
+  HCMST_couples$Q10 %in% c('No formal education', '1st-4th grade', '5th or 6th grade', '7th or 8th grade', '9th grade') ~ '5.Low',
+  HCMST_couples$Q10 %in% c('10th grade', '11th grade', '12th grade no diploma') ~ '4.Below HS Graduate',
+  HCMST_couples$Q10 %in% c('HS graduate or GED', 'Some college, no degree') ~ '3.HS Graduate/Some College',
+  HCMST_couples$Q10 == 'Associate degree' ~ '2.Associate Degree',
+  HCMST_couples$Q10 %in% c('Bachelor’s degree', 'Master’s degree', 'Professional or Doctorate degree') ~ '1.Bachelor’s and Above'
+)
+
+# Group by education level and satisfaction rating, and calculate counts
+education_satisfaction <- HCMST_couples %>%
+  group_by(simplified_education, Q34) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  mutate(Proportion = Count / sum(Count)) %>%
+  filter(!is.na(simplified_education))
+
+# Generate scatter plot
+ggplot(education_satisfaction, aes(x = Q34, y = simplified_education, size = Proportion, color = Proportion)) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Relationship Satisfaction by Partner's Education Level",
+       x = "Satisfaction Rating",
+       y = "Partner's Education Level",
+       size = "Proportion",
+       color = "Proportion") +
+  theme_minimal()
+```
+Sexual Orientation and Living Together
+This chart will explore the correlation between the respondent's sexual orientation and the likelihood of living together with their partner, using w6_identity for sexual orientation and Q20 for living together status.
+```{r}
+# Data Preparation
+orientation_living_together <- HCMST_couples %>%
+  filter(!is.na(w6_identity) & !is.na(Q20)) %>%
+  group_by(w6_identity, Q20) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  mutate(Proportion = Count / sum(Count) * 100)
+
+# Visualization
+ggplot(orientation_living_together, aes(x = factor(w6_identity), y = Proportion, fill = factor(Q20))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Pastel1", name = "Living Together") +
+  labs(title = "Living Together Status by Sexual Orientation",
+       x = "Sexual Orientation",
+       y = "Proportion (%)",
+       fill = "Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+I will recommend the scatter plot to our editor because it effectively visualizes the relationship between partner education levels and relationship satisfaction ratings. This visualization is useful because it allows us to quickly identify any patterns or trends between these two variables.
+
+By plotting partner education levels on the y-axis and satisfaction ratings on the x-axis, with the size and color of the points representing the proportion of respondents in each category, we can easily see how satisfaction levels vary across different education levels. This visualization helps highlight any potential correlations or disparities between partner education and relationship satisfaction, providing valuable insights into the dynamics of relationships in the dataset.
+
+Question 5
+```{r}
+library(plotly)
+
+# Generate scatter plot with plotly
+p <- ggplot(education_satisfaction, aes(x = Q34, y = simplified_education, size = Proportion, color = Proportion)) +
+  geom_point() +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Relationship Satisfaction by Partner's Education Level",
+       x = "Satisfaction Rating",
+       y = "Partner's Education Level",
+       size = "Proportion",
+       color = "Proportion") +
+  theme_minimal()
+
+# Convert ggplot to plotly object
+p <- ggplotly(p)
+
+# Print the interactive plot
+p
+
+
+```
+Adding interactivity to this scatter plot allows readers to hover over individual points to see specific information about each data point, such as the satisfaction rating, partner's education level, and proportion. This interactive feature enhances the reader's engagement with the data and facilitates exploration of patterns and relationships within the dataset.
+
+```{r}
+library(plotly)
+
+# Scatter plot
+p <- ggplot(HCMST_couples, aes(x = ppage, y = Q9, color = ppgender)) +
+  geom_point(alpha = 0.5) +  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +  
+  scale_color_manual(values = c("Male" = "blue", "Female" = "pink")) +  
+  labs(title = "Relationship Between Respondent's and Partner's Age by Gender",
+       x = "Respondent's Age",
+       y = "Partner's Age",
+       color = "Gender of Respondent") +
+  theme_minimal() +
+  geom_text(aes(label = "Main Pattern"), x = 50, y = 20, check_overlap = TRUE, color = "black")
+
+# Convert ggplot to plotly object
+p <- ggplotly(p)
+
+# Print the interactive plot
+p
+
+```
+With this modification, readers can interact with the scatter plot by hovering over data points to see specific information about each point, such as the age of the respondent and their partner, as well as the gender of the respondent. This interactivity enhances the reader's understanding of the relationship between respondent's and partner's age by providing detailed information on each data point.
+
+Question 6
+```{r}
+# Rename variables and filter out missing values
+interactiveTable <- HCMST_couples %>%select(
+    Partner_Education = Q10,
+    Partner_Mother_Education = Q11,
+    Relationship_Quality = Q34) %>%
+  mutate(Relationship_Quality = case_when(
+    Relationship_Quality == "Excellent" ~ "Excellent",
+    Relationship_Quality == "Good" ~ "Good",
+    Relationship_Quality == "Fair" ~ "Fair",
+    Relationship_Quality == "Poor" ~ "Poor",
+    Relationship_Quality == "Very Poor" ~ "Very Poor")) %>%na.omit()
+
+# Create the interactive data table
+datatable(
+  interactiveTable,
+  options = list(
+    searchHighlight = TRUE,  # Highlight search terms
+    pageLength = 10,         # Number of rows to display on a single page
+    autoWidth = TRUE, 
+    searching = TRUE,        # Enable search box
+    order = list(list(0, "asc")),
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  ),  # Center text in all columns
+  filter = "top",            # Place filters at the top of each column
+  rownames = FALSE           # Remove row names
+)
+
+
+```
+
+
+
+
+
+```
