@@ -1,0 +1,267 @@
+---
+title: 'Assignment 2: Mapping Severe Weather Events'
+author: "Mengyan Xu"
+date: "2024-03-06"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Setup Libs
+```{r}
+library(dplyr)
+library(ggplot2)
+library(sf) 
+library(maps)
+library(ggmap)
+```
+
+Question 1. Damage from Storms
+a) State Level Choropleth Maps
+Provide a static state-level choropleth map of the United States visualizing where monetary damage is recorded (by using the sum of the variables DAMAGE_PROPERTY_USD and DAMAGE_CROPS_USD).
+```{r}
+library(dplyr)
+state_damage <- storms %>%
+  group_by(STATE) %>%
+  summarise(Total_Damage = sum(DAMAGE_PROPERTY_USD + DAMAGE_CROPS_USD, na.rm = TRUE))
+```
+
+
+```{r}
+us_states_map$region <- toupper(us_states_map$region)
+
+map_data <- merge(us_states_map, state_damage, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+head(map_data, n = 2000)
+```
+
+```{r}
+summary(state_damage$Total_Damage)
+```
+
+```{R}
+map_data <- merge(us_states_map, state_damage, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+ggplot() +
+  geom_polygon(data = map_data, aes(x = long, y = lat, group = group, fill = Total_Damage), color = "white") +
+  geom_path(data = us_states_map, aes(x = long, y = lat, group = group), color = "gray", alpha = 0.5) +
+  scale_fill_gradient(low = "lightblue", high = "red", name = "Total Damage (USD)") +
+  labs(title = "State-level Damage from Storms", x = "", y = "") +
+  theme_minimal() +
+  coord_fixed(1.3)
+```
+a) County Choropleth Maps
+Provide a static county-level choropleth map of the United States visualizing where monetary damage is recorded (by using the sum of the variables DAMAGE_PROPERTY_USD and DAMAGE_CROPS_USD).
+```{r}
+library(usmap)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(viridis)
+
+# Create the 'fips' column
+storms <- storms %>%
+  mutate(fips = sprintf("%02d%03d", as.integer(STATE_FIPS), as.integer(CZ_FIPS)))
+
+county_damage <- storms %>%
+  group_by(fips) %>%
+  summarise(Total_Damage = sum(DAMAGE_PROPERTY_USD + DAMAGE_CROPS_USD, na.rm = TRUE))
+
+plot_usmap(data = county_damage, values = "Total_Damage", regions = "counties") +
+  scale_fill_continuous(name = "Total Damage", label = scales::dollar, low = "white", high = "red") +
+  theme(legend.position = "right") +
+  labs(title = " Damage from Severe Weather Events by County",
+       subtitle = "Sum of Damage to Property and Crops, 2017-2022")
+
+
+
+
+
+
+```
+b) Density Map
+Provide an alternative map, in which you highlight the density of severe events by focusing on the variables of injuries and/or deaths associated with storms.
+
+Discuss briefly which of the two approaches provides a better visual summary of the distribution of the destructive effects of storms.
+```{r}
+# Data cleaning 
+Injuries_data <- storms  %>%
+  filter(!is.na(BEGIN_LAT) & !is.na(BEGIN_LON))%>%
+  group_by(BEGIN_LAT, BEGIN_LON) %>%
+  summarise(Total_Injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT, na.rm = TRUE)) %>%
+  ungroup() %>% filter(Total_Injuries > 0) 
+
+# Get US state boundaries using sf and maps
+states <- st_as_sf(maps::map("usa", plot = FALSE, fill = TRUE), crs = 4326)
+
+# Convert your data to an sf object correctly
+storm_points <- st_as_sf(Injuries_data, coords = c("BEGIN_LON", "BEGIN_LAT"), crs = 4326, agr = "constant")
+
+# Plot
+ggplot() +
+  geom_sf(data = states, fill = "lightgrey", color = "black", size = 0.25) +
+  geom_sf(data = storm_points, aes(size = Total_Injuries, color = Total_Injuries), alpha = 0.5) +
+  scale_color_viridis_c(option = "C", direction = -1) +  # Use viridis for nice color scale
+  theme_minimal() +
+  labs(title = "Density of Severe Weather Events by Injuries",
+       subtitle = "United States",
+       color = "Injuries",
+       size = "Injuries",
+       caption = "Source: Storm Data") +
+  theme(legend.position = "bottom") +
+  coord_sf(xlim = c(-130, -65), ylim = c(25, 50))  # Center and zoom in on the US
+```
+
+Discussion on Visualization Approaches
+Choropleth Map: Visualizing monetary damage across regions provides a clear picture of the financial impact of severe weather events. It's useful for assessing economic resilience and planning for financial aid. However, it may not adequately represent the human aspect of these events.
+Density Map: Focusing on injuries and deaths, this approach highlights areas with significant human impacts, useful for emergency preparedness and public health planning. It emphasizes the severity of weather events in terms of human safety rather than economic loss.
+
+Which Provides a Better Visual Summary?
+The best approach depends on the stakeholders' needs. For economic planning and recovery efforts, the choropleth map of monetary damages is invaluable. For emergency services, healthcare providers, and community safety initiatives, the density map of injuries and deaths provides critical insights.
+Ideally, both maps should be used in conjunction to get a comprehensive understanding of the storms' effects, addressing both economic and human impacts for a holistic disaster response and preparedness strategy.
+
+Question 2. Location of Severe Events
+a) Interactive Map of Severe Weather Events
+Create a leaflet map of the United States showing the location of severe weather events which result in at least one death (hint: use EVENT_TYPE). Ignore locations that fall outside the United States. Provide at least three pieces of information on the incident in a popup.
+```{r}
+library(dplyr)
+
+# Filter for events with at least one death
+severe_events <- storms %>%
+  filter(DEATHS_DIRECT >= 1)
+
+library(leaflet)
+
+# Create the leaflet map
+leaflet(data = severe_events) %>%
+  addTiles() %>%  # Add default OpenStreetMap map tiles
+  addMarkers(~BEGIN_LON, ~BEGIN_LAT, popup = ~paste("Event Type:", EVENT_TYPE, 
+                                                     "<br>Date:", BEGIN_DATE_TIME,
+                                                     "<br>State:", STATE)) %>%
+  setView(lng = -98.5795, lat = 39.8283, zoom = 4)  # Center the map on the US
+
+```
+
+b) Color by Type of Weather Event
+Start with the previous map. Now, distinguish the markers of the weather event locations by EVENT_TYPE, i.e. what kind of weather event occurred. If there are too many categories, collapse some categories. Choose an appropriate coloring scheme to map the locations by type of weather event. Add a legend informing the user about the color scheme. Also make sure that the information about the type of weather event is now contained in the popup information. Show this map.
+
+```{r}
+# Example categorization
+severe_events$Category <- with(severe_events, ifelse(EVENT_TYPE %in% c("Tornado", "Funnel Cloud"), "Tornado",
+                                      ifelse(EVENT_TYPE %in% c("Flood", "Flash Flood"), "Flood",
+                                      ifelse(EVENT_TYPE %in% c("Hail", "Thunderstorm Wind"), "Severe Storm",
+                                      "Other"))))
+
+```
+
+```{r}
+colors <- c("Tornado" = "red", "Flood" = "blue", "Severe Storm" = "green", "Other" = "gray")
+severe_events$Color <- colors[severe_events$Category]
+```
+
+```{r}
+library(leaflet)
+
+leaflet(severe_events) %>% 
+  addTiles() %>% 
+  addCircleMarkers(
+    lng = ~BEGIN_LON, lat = ~BEGIN_LAT,
+    color = ~Color,  # Use the color determined by event category
+    popup = ~paste("Event Type:", EVENT_TYPE, 
+                   "<br>Date:", BEGIN_DATE_TIME, 
+                   "<br>State:", STATE, 
+                   "<br>Category:", Category),
+    fillOpacity = 0.5, opacity = 1, radius = 6
+  ) %>%
+  setView(lng = -98.5795, lat = 39.8283, zoom = 4)
+
+```
+c) Cluster
+Add marker clustering, so that zooming in will reveal the individual locations but the zoomed out map only shows the clusters. Show the map with clusters.
+```{r}
+library(leaflet)
+
+leaflet(data = severe_events) %>%
+  addTiles() %>%  # Add default OpenStreetMap tiles
+  addMarkers(
+    lng = ~BEGIN_LON, lat = ~BEGIN_LAT,
+    popup = ~paste("Event Type:", EVENT_TYPE, 
+                   "<br>Date:", BEGIN_DATE_TIME, 
+                   "<br>State:", STATE,
+                   "<br>Category:", Category),
+    clusterOptions = markerClusterOptions()
+  ) %>%
+  setView(lng = -98.5795, lat = 39.8283, zoom = 4)
+
+
+```
+
+Question 3. Severe Events and Cities [OPTIONAL BONUS ONLY]
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(geosphere)
+library(RANN)
+
+# Filter out events with invalid or missing coordinates
+valid_storms <- storms %>%
+  filter(!is.na(BEGIN_LAT), !is.nan(BEGIN_LAT), !is.infinite(BEGIN_LAT),
+         !is.na(BEGIN_LON), !is.nan(BEGIN_LON), !is.infinite(BEGIN_LON))
+event_coords <- cbind(valid_storms$BEGIN_LON, valid_storms$BEGIN_LAT)
+city_coords <- cbind(cities$lon, cities$lat)
+nearest <- nn2(city_coords, event_coords, k = 1)
+
+# Add the nearest city info to the valid_storms dataframe
+valid_storms$Nearest_City <- cities$City[nearest$nn.idx]
+valid_storms$Nearest_City_Population <- cities$Population[nearest$nn.idx]
+
+
+ggplot(valid_storms, aes(x = Nearest_City_Population, y = DAMAGE_PROPERTY_USD)) +
+  geom_point(alpha = 0.5) +
+  scale_x_log10() +  # Use log scale if population varies widely
+  scale_y_continuous(labels = scales::dollar_format()) +
+  theme_minimal() +
+  labs(title = "Weather Event Impact vs. Nearest City Population",
+       x = "Nearest City Population",
+       y = "Property Damage ($)",
+       caption = "Data Source: Your Dataset")
+
+
+ggplot(valid_storms, aes(x = Nearest_City_Population, y = DAMAGE_PROPERTY_USD, color = EVENT_TYPE)) +
+  geom_point(alpha = 0.5) +
+  scale_x_log10() +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  theme_minimal() +
+  labs(title = "Event Impact vs. City Population by Event Type",
+       x = "Nearest City Population",
+       y = "Property Damage ($)",
+       color = "Event Type",
+       caption = "Data Source: Your Dataset")
+
+```
+
