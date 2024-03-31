@@ -1,0 +1,272 @@
+---
+title: 'Assignment 3: Moviescripts_GRADED'
+author: "Mengyan Xu"
+date: "2024-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+```
+
+
+## Dialogue 
+#### a) Most Common Words
+
+```{r cars}
+#a
+library(tidyverse)
+library(dplyr)
+data <- read.csv('tagged.csv')
+data_sub_diag <- data %>% filter(Tag == 'Dialogue')
+New_data <- data_sub_diag %>% 
+  group_by(movie_id) %>% 
+  mutate(Content = paste0(Content, collapse = "")) %>% distinct(Content, movie_id)
+
+library("quanteda")
+tokens <- tokens(New_data$Content, what = "word",
+                 remove_punct = TRUE,
+                 remove_numbers = TRUE,
+                 remove_symbols = TRUE,
+                 remove_twitter = TRUE,
+                 remove_separators = TRUE)
+#tokens to lower cases
+tokens <- tokens_tolower(tokens)
+# remove stop words
+tokens <- tokens_remove(tokens, stopwords("english"))
+tokens <- tokens_remove(tokens, '--')
+tokens_dfm <- dfm(tokens)
+library("quanteda.textstats")
+tokens_freq <- textstat_frequency(tokens_dfm, n = 20)
+ggplot(tokens_freq, aes(x = frequency, y = reorder(feature, frequency))) +
+  geom_point() + 
+  labs(x = "Frequency", y = "words")
+
+```
+
+
+
+
+## Dialogue 
+#### b) Word Cloud
+```{r cars1}
+#b
+New_data[ , 'token'] = NA
+New_data$token = sapply(tokens, paste, collapse = " ")
+New_data_cloud <- New_data %>% filter(movie_id == '10-Things-I-Hate-About-You_parsed'
+                                           |movie_id ==  "Sense-and-Sensibility_parsed")
+
+library(tm)
+library(tidytext)
+library("wordcloud")
+dtm <- TermDocumentMatrix(New_data$token) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df <- data.frame(word = names(words),freq=words)
+set.seed(1234) # for reproducibility 
+wordcloud(words = df$word, freq = df$freq, min.freq = 1, max.words=100, random.order=FALSE, 
+          rot.per=0.3, colors=brewer.pal(6,"Dark2"))
+
+
+```
+I randomly choose movies 10-Things-I-Hate-About-You and Cirque-du-Freak-The-Vampires-Assistant to generate word cloud
+
+
+
+
+## Dialogue 
+#### c) Success in Words
+```{r cars2}
+#c
+library(tidytable)
+data_add <- read.csv('metadata.csv')
+data_add$tagged <- sub(".txt$", "", data_add$tagged)
+data_sub_diag <- left_join(New_data, data_add, by = c("movie_id"="tagged"))
+# sort from unpopular to popular
+data_sub_diag <- data_sub_diag[order(popularity),]
+
+
+unpop100 <- Corpus(VectorSource(data_sub_diag[1:100,]$token))
+dtm <- TermDocumentMatrix(unpop100)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+
+pop100 <- Corpus(VectorSource(tail(data_sub_diag, 100)$token))
+dtm1 <- TermDocumentMatrix(pop100)
+m1 <- as.matrix(dtm1)
+v1 <- sort(rowSums(m1),decreasing=TRUE)
+d1 <- data.frame(word = names(v1),freq=v1)
+
+words_collection <- unique(c(names(v), names(v1)))
+freq_pop <- rep(0, length(words_collection))
+freq_unpop <- rep(0, length(words_collection))
+
+for (i in 1:length(words_collection)){
+  freq_pop[i] <- v[words_collection[i]]
+  freq_unpop[i] <- v1[words_collection[i]]
+}
+freq_pop[is.na(freq_pop)] <- 0
+freq_unpop[is.na(freq_unpop)] <- 0
+pop <- vector(length = length(words_collection))
+data_c1 <- data.frame(words_collection , 
+                     freq_pop, pop)
+data_c1$pop = 'popular mivie'
+data_c2 <- data.frame(words_collection , 
+                      freq_unpop, pop)
+data_c2$pop = 'unpopular movie'
+colnames(data_c2)[colnames(data_c2) == 'freq_unpop'] <- 'freq_pop'
+data_c = bind_rows(data_c1, data_c2)
+data_c <- data_c[order(-freq_pop),]
+ggplot(data_c[1:20,],
+       aes(x = words_collection,
+           y = freq_pop,
+           fill = pop)) +
+  geom_col() 
+```
+
+
+## Dialogue 
+#### d) Profanity
+```{r cars3}
+## d
+badwords<-readLines("http://www.cs.cmu.edu/~biglou/resources/bad-words.txt")
+data_d <- within(
+  data_sub_diag,
+  counts <- sapply(
+    regmatches(token, gregexpr("\\w+", token)),
+    function(v) sum(v %in% badwords)
+  )
+)
+data_d$pro_perc = data_d$counts / length(data_d$token)
+data_d <- data_d[order(-pro_perc),]
+data_d_sub = data_d[1:11,]
+data_d_sub = subset(data_d_sub, !is.na(data_d_sub$release_date))
+data_d_sub <- select(data_d_sub, c(release_date, pro_perc))
+ggplot(data_d_sub, aes(x=release_date, y=pro_perc)) +
+  geom_col()
+```
+
+
+## Dialogue 
+#### e) Simplicity is a Virtue
+```{r cars3=4}
+library(quanteda)
+data_sub_diag$read = textstat_readability(data_sub_diag$token,
+                                          measure = "Flesch")$Flesch
+ggplot(data_sub_diag, aes(x=read, y=vote_average)) +
+  geom_line()
+
+```
+no clear pattern between the readability of the scripts and their IMDb vote
+average
+
+
+
+## Genres 
+#### a) Defining words
+```{r cars100}
+# 2. Genres
+# a) Defining words
+data2a <- select(data_sub_diag,c(token, genres))
+data2a = data2a[complete.cases(data2a), ]
+
+
+
+data2a_words <- data2a %>%
+  mutate(token = as.character(token)) %>% 
+  unnest_tokens(output = word, input = token) %>%
+  count(genres, word, sort = TRUE)
+data2a_words  <- data2a_words  %>%
+  bind_tf_idf(term = word, document = genres, n)
+
+
+
+ data2a_words %>% group_by(genres) %>%
+   ungroup() %>%
+   top_n(50) %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = genres)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~genres, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+ 
+
+```
+Different genres and drama and horror different types of words, in this case, horror seems to use more negative words.
+
+
+## Genres 
+#### b) Emotions
+```{r cars101}
+# 2. Genres
+# b) Emotions
+data2b <- select(data_sub_diag,c(token, genres))
+data2b = data2b[complete.cases(data2b), ]
+data2b <- data2b %>% 
+  count(token, genres) %>%
+  bind_tf_idf(token, genres, n)
+
+
+data2b_words <- data2b %>%
+  mutate(token = as.character(token)) %>% 
+  unnest_tokens(output = word, input = token) %>%
+  count(genres, word, sort = TRUE)
+
+library(textdata)
+data2b_words = data2b_words %>%
+  group_by(genres) %>%
+  inner_join(get_sentiments("nrc"))
+
+
+a = data2b_words %>%
+  group_by(genres, sentiment) %>%
+  summarise(a_sum=sum(n))
+
+ a%>% 
+  group_by(genres)%>%
+  ungroup() %>% top_n(90) %>%
+  ggplot(aes(x=reorder(sentiment,a_sum),y=a_sum,fill=genres)) + 
+  geom_col(show.legend = FALSE) + 
+  facet_wrap(~genres,scales="free") + 
+  coord_flip()
+ 
+
+```
+most genres tend to use fewer disgust words and use more trust words
+
+
+## Genres 
+#### c) topic
+```{r cars104}
+# 2. Genres
+ # c) topic
+ # focus on action genre here
+ library(topicmodels)
+ library(tm)
+ data2c <- select(data_sub_diag,c(token, genres))
+ data2c = data2c[complete.cases(data2c), ]
+ data2c<-  data2c %>% filter(genres == 'Comedy')
+ K <- 3
+ set.seed(123)
+ DTM <- DocumentTermMatrix( data2c$token, 
+                            control = list(bounds = list(global = 
+                              c(3, Inf))))
+ topicModel <- LDA(DTM, K, method="Gibbs", control=list(iter = 500, 
+                                                        verbose = 25))   
+
+ to = topicModel %>% tidy(matrix = "beta")
+ word_probs <- to %>%
+   group_by(topic) %>%
+   top_n(15, beta) %>%
+   ungroup() %>%
+   mutate(term2 = fct_reorder(term, beta))
+ ggplot(
+   word_probs,
+   aes(term2, beta, fill=as.factor(topic))
+ ) +
+   geom_col(show.legend = FALSE) +
+   facet_wrap(~ topic, scales = "free") +
+   coord_flip()
+ 
+
+```
